@@ -191,6 +191,7 @@ static bool meaningfulName(const std::string& name) {
 //      delete unnecessary ones later with replaceAllusesWith().
 struct Environment {
   Environment(
+      std::string class_namespace,
       Method& method,
       Resolver resolver,
       Block* b,
@@ -198,6 +199,7 @@ struct Environment {
       : method(method),
         resolver(std::move(resolver)),
         b(b),
+        class_namespace_(std::move(class_namespace)),
         next(std::move(next)) {}
 
   Method& method;
@@ -205,6 +207,7 @@ struct Environment {
   std::vector<std::string> captured_inputs;
   std::unordered_map<std::string, std::string> error_messages;
   Block* b;
+  std::string class_namespace_;
 
   std::shared_ptr<Environment> next;
 
@@ -415,7 +418,7 @@ struct Environment {
     }
 
     if (!retval) {
-      if (auto class_type = ClassType::get(ident)) {
+      if (auto class_type = ClassType::get(class_namespace_, ident)) {
         retval = std::make_shared<script::ClassValue>(class_type);
       }
     }
@@ -517,6 +520,7 @@ struct DefContext {
 
 struct to_ir {
   to_ir(
+      std::string class_namespace,
       const Def& def,
       Resolver resolver_,
       const c10::optional<Self>& self,
@@ -524,6 +528,8 @@ struct to_ir {
       : method(method),
         graph(method.graph()),
         resolver(std::move(resolver_)),
+        class_namespace_(std::move(class_namespace)),
+        typeParser_(class_namespace_),
         environment_stack(nullptr) {
     AT_ASSERT(resolver);
     pushFrame(graph->block(), /*starts_def=*/true);
@@ -547,6 +553,7 @@ struct to_ir {
   Resolver resolver;
   std::unordered_map<int64_t, Value*> integral_constants;
   std::unordered_map<double, Value*> fp_constants;
+  std::string class_namespace_;
   ScriptTypeParser typeParser_;
 
   // Singly-linked list of environments. This top element contains a member
@@ -558,8 +565,8 @@ struct to_ir {
     if (starts_def) {
       def_stack_.emplace_back();
     }
-    environment_stack =
-        std::make_shared<Environment>(method, resolver, b, environment_stack);
+    environment_stack = std::make_shared<Environment>(
+        class_namespace_, method, resolver, b, environment_stack);
   }
   std::shared_ptr<Environment> popFrame(bool ends_def = false) {
     auto old_frame = environment_stack;
@@ -625,7 +632,7 @@ struct to_ir {
         blank_decl,
         List<Stmt>::create(r, {ret}));
     auto m = std::make_shared<Module>();
-    defineMethodsInModule(m, {def}, {resolver}, c10::nullopt);
+    defineMethodsInModule(m, {def}, {resolver}, c10::nullopt, class_namespace_);
     Stack stack;
     m->get_method("defaults").run(stack);
     return stack.at(0).toTuple()->elements();
@@ -2737,11 +2744,15 @@ void defineMethodsInModule(
     const std::shared_ptr<Module>& m,
     const std::vector<Def>& definitions,
     const std::vector<Resolver>& resolvers,
-    const c10::optional<Self>& self) {
+    const c10::optional<Self>& self,
+    c10::optional<std::string> class_namespace) {
   AT_ASSERT(definitions.size() == resolvers.size());
   auto resolver_it = resolvers.begin();
   std::vector<Method*> methods;
   std::unordered_map<std::string, Method*> function_table;
+  if (!class_namespace) {
+    class_namespace = ClassType::getFreshNamespace();
+  }
   for (const Def& def : definitions) {
     const std::string& name = def.name().name();
     auto resolver = *resolver_it++;
@@ -2761,9 +2772,9 @@ void defineMethodsInModule(
         return resolver(name, m, loc);
       };
     }
-    auto creator = [def, resolver, self](Method& method) {
+    auto creator = [class_namespace, def, resolver, self](Method& method) {
       AT_ASSERT(resolver);
-      to_ir(def, resolver, self, method);
+      to_ir(*class_namespace, def, resolver, self, method);
     };
     Method& method = m->create_method(name, creator);
     function_table[name] = &method;
@@ -2782,7 +2793,8 @@ void defineMethodsInModule(
     const std::shared_ptr<Module>& m,
     const std::string& source,
     const Resolver& resolver,
-    const c10::optional<Self>& self) {
+    const c10::optional<Self>& self,
+    c10::optional<std::string> class_namespace) {
   Parser p(source);
   std::vector<Def> definitions;
   std::vector<Resolver> resolvers;
@@ -2791,7 +2803,7 @@ void defineMethodsInModule(
     definitions.push_back(def);
     resolvers.push_back(resolver);
   }
-  defineMethodsInModule(m, definitions, resolvers, self);
+  defineMethodsInModule(m, definitions, resolvers, self, class_namespace);
 }
 
 void lambdaLiftFork(Node* fork_node) {

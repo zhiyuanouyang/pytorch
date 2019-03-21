@@ -714,7 +714,8 @@ void initJitScriptBindings(PyObject* module) {
             if (has_self) {
               self = Self(std::make_shared<ModuleValue>(m));
             }
-            defineMethodsInModule(m, script, pythonResolver(rcb), self);
+            defineMethodsInModule(
+                m, script, pythonResolver(rcb), self, "python");
           })
       .def(
           "_create_methods",
@@ -728,7 +729,11 @@ void initJitScriptBindings(PyObject* module) {
               resolvers.push_back(pythonResolver(callback));
             }
             defineMethodsInModule(
-                m, defs, resolvers, Self(std::make_shared<ModuleValue>(m)));
+                m,
+                defs,
+                resolvers,
+                Self(std::make_shared<ModuleValue>(m)),
+                "python");
 
             // Stitch in default arguments for each Def if provided
             auto defaults_it = defaults.begin();
@@ -1021,7 +1026,7 @@ void initJitScriptBindings(PyObject* module) {
          FunctionDefaults defaults) {
         auto def_f = def.withName("forward");
         defineMethodsInModule(
-            mod, {def_f}, {pythonResolver(rcb)}, c10::nullopt);
+            mod, {def_f}, {pythonResolver(rcb)}, c10::nullopt, "python");
         auto& method = mod->get_method("forward");
         method.setSchema(getSchemaWithNameAndDefaults(
             def.range(), method.getSchema(), def.name().name(), defaults));
@@ -1034,14 +1039,17 @@ void initJitScriptBindings(PyObject* module) {
       [](std::shared_ptr<Module> module,
          const ClassDef& classDef,
          ResolutionCallback rcb) {
-        auto classType = ClassType::create(classDef.name().name(), module);
+        // TODO: for now, all python classes are put inside the same namespace.
+        auto classType =
+            ClassType::create("python", classDef.name().name(), module);
         std::vector<Resolver> rcbs;
         std::vector<Def> methodDefs;
         for (const auto& def : classDef.defs()) {
           methodDefs.push_back(def);
           rcbs.push_back(pythonResolver(rcb));
         }
-        defineMethodsInModule(module, methodDefs, rcbs, Self(classType));
+        defineMethodsInModule(
+            module, methodDefs, rcbs, Self(classType), "python");
         return module;
       });
 
@@ -1080,7 +1088,13 @@ void initJitScriptBindings(PyObject* module) {
         }
         import_ir_module(module_lookup, in, optional_device, extra_files);
       });
-  m.def("_jit_import_methods", import_methods);
+  m.def(
+      "_jit_import_methods",
+      [](const std::shared_ptr<script::Module>& mod,
+         const std::string& src,
+         const std::vector<at::Tensor>& constant_table) {
+        import_methods("python", mod, src, constant_table);
+      });
   m.def("_jit_set_emit_module_hook", setEmitModuleHook);
   m.def("_jit_clear_class_registry", ClassType::clearRegistry);
 
