@@ -169,9 +169,16 @@ struct GraphFuser {
   Block* block_;
   std::unique_ptr<AliasDb> aliasDb_;
   std::shared_ptr<Graph> graph_;
+  using FusionCallback = std::function<bool(Node*)>;
+  FusionCallback callback_ = [&](Node* n) { return isFusableDefault(n); };
+  Symbol kind_ = prim::FusionGroup;
 
   GraphFuser(Block* block, std::shared_ptr<Graph> graph)
       : block_(block), graph_(std::move(graph)) {}
+
+  // Custom passes require kind to specified
+  GraphFuser(Block* block, std::shared_ptr<Graph> graph, FusionCallback callback, Symbol kind)
+      : block_(block), graph_(std::move(graph)), callback_(callback), kind_(kind) {}
 
   value_list tensorInputs(Node* node) {
     return filter(node->inputs(), [](Value* v) {
@@ -187,6 +194,12 @@ struct GraphFuser {
   }
 
   bool isFusable(Node* node) {
+    return callback_(node);
+  }
+
+  // Default fusability check - used when the user doesn't pass in
+  // a callback.
+  bool isFusableDefault(Node* node) {
     return isFusableMap(node) || isFusableBatchNorm(node);
   }
 
@@ -240,7 +253,7 @@ struct GraphFuser {
   }
 
   Graph& getSubgraph(Node* n) {
-    AT_ASSERT(n->kind() == prim::FusionGroup);
+    AT_ASSERT(n->kind() == kind_);
     return *n->g(attr::Subgraph);
   }
 
@@ -436,7 +449,7 @@ struct GraphFuser {
   // turn consumer node n into a fusion group with just n inside
   // to prepare for fusion and replace uses of n with the new group
   Node* createSingletonFusionGroup(Node* n) {
-    auto group = block_->owningGraph()->createFusionGroup();
+    auto group = block_->owningGraph()->createFusionGroup(kind_);
     // propogate position information for the new node so we can always
     // have a valid mapping
     group->insertBefore(n);
@@ -1338,6 +1351,12 @@ void FuseGraph(std::shared_ptr<Graph>& graph) {
     EliminateDeadCode(graph);
     // Improve the quality of shape propagation code that was left
     PeepholeOptimizeShapeExpressions(graph->block());
+  }
+}
+
+void CustomFuseGraph(std::shared_ptr<Graph>& graph, std::function<bool(Node*)> fn, Symbol kind) {
+  if (canFuseOnCPU() || canFuseOnGPU()) {
+    GraphFuser(graph->block(), graph, fn, kind).run();
   }
 }
 
