@@ -180,9 +180,9 @@ setup_ci_environment: &setup_ci_environment
 
     # Set up NVIDIA docker repo
     curl -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-    echo "deb https://nvidia.github.io/libnvidia-container/ubuntu16.04/amd64 /" | sudo tee -a /etc/apt/sources.list.d/nvidia-docker.list
-    echo "deb https://nvidia.github.io/nvidia-container-runtime/ubuntu16.04/amd64 /" | sudo tee -a /etc/apt/sources.list.d/nvidia-docker.list
-    echo "deb https://nvidia.github.io/nvidia-docker/ubuntu16.04/amd64 /" | sudo tee -a /etc/apt/sources.list.d/nvidia-docker.list
+    echo "deb https://nvidia.github.io/libnvidia-container/ubuntu14.04/amd64 /" | sudo tee -a /etc/apt/sources.list.d/nvidia-docker.list
+    echo "deb https://nvidia.github.io/nvidia-container-runtime/ubuntu14.04/amd64 /" | sudo tee -a /etc/apt/sources.list.d/nvidia-docker.list
+    echo "deb https://nvidia.github.io/nvidia-docker/ubuntu14.04/amd64 /" | sudo tee -a /etc/apt/sources.list.d/nvidia-docker.list
 
     sudo apt-get -q -y update
     sudo apt-get -q -y remove linux-image-generic linux-headers-generic linux-generic docker-ce
@@ -192,18 +192,12 @@ setup_ci_environment: &setup_ci_environment
     # getting broken CI when Docker would update their docker version,
     # and nvidia-docker2 would be out of date for a day until they
     # released a newer version of their package.
-    #
-    # How to figure out what the correct versions of these packages are?
-    # My preferred method is to start a Docker instance of the correct
-    # Ubuntu version (e.g., docker run -it ubuntu:16.04) and then ask
-    # apt what the packages you need are.  Note that the CircleCI image
-    # comes with Docker.
     sudo apt-get -q -y install \
       linux-headers-$(uname -r) \
       linux-image-generic \
       moreutils \
-      docker-ce=5:18.09.4~3-0~ubuntu-xenial \
-      nvidia-docker2=2.0.3+docker18.09.4-1 \
+      docker-ce=18.06.2~ce~3-0~ubuntu \
+      nvidia-docker2=2.0.3+docker18.06.2-1 \
       expect-dev
 
     sudo pkill -SIGHUP dockerd
@@ -211,8 +205,8 @@ setup_ci_environment: &setup_ci_environment
     sudo pip -q install awscli==1.16.35
 
     if [ -n "${USE_CUDA_DOCKER_RUNTIME}" ]; then
-      DRIVER_FN="NVIDIA-Linux-x86_64-418.43.run"
-      wget "https://s3.amazonaws.com/ossci-linux/nvidia_driver/$DRIVER_FN"
+      DRIVER_FN="NVIDIA-Linux-x86_64-410.104.run"
+      wget "http://us.download.nvidia.com/XFree86/Linux-x86_64/410.104/$DRIVER_FN"
       sudo /bin/bash "$DRIVER_FN" -s --no-drm || (sudo cat /var/log/nvidia-installer.log && false)
       nvidia-smi
     fi
@@ -271,7 +265,7 @@ macos_brew_update: &macos_brew_update
 pytorch_linux_build_defaults: &pytorch_linux_build_defaults
   resource_class: large
   machine:
-    image: ubuntu-1604:201903-01
+    image: default
   steps:
   - run:
       <<: *setup_linux_system_environment
@@ -306,7 +300,7 @@ pytorch_linux_build_defaults: &pytorch_linux_build_defaults
 
 pytorch_linux_test_defaults: &pytorch_linux_test_defaults
   machine:
-    image: ubuntu-1604:201903-01
+    image: default
   steps:
   - run:
       <<: *setup_linux_system_environment
@@ -335,7 +329,7 @@ pytorch_linux_test_defaults: &pytorch_linux_test_defaults
 caffe2_linux_build_defaults: &caffe2_linux_build_defaults
   resource_class: large
   machine:
-    image: ubuntu-1604:201903-01
+    image: default
   steps:
   - run:
       <<: *setup_linux_system_environment
@@ -396,7 +390,7 @@ caffe2_linux_build_defaults: &caffe2_linux_build_defaults
 
 caffe2_linux_test_defaults: &caffe2_linux_test_defaults
   machine:
-    image: ubuntu-1604:201903-01
+    image: default
   steps:
   - run:
       <<: *setup_linux_system_environment
@@ -815,7 +809,7 @@ binary_linux_build: &binary_linux_build
 # that on the docker executor)
 binary_linux_test: &binary_linux_test
   machine:
-    image: ubuntu-1604:201903-01
+    image: default
   steps:
   - run:
       <<: *setup_linux_system_environment
@@ -881,7 +875,7 @@ binary_linux_test: &binary_linux_test
 
 binary_linux_upload: &binary_linux_upload
   machine:
-    image: ubuntu-1604:201903-01
+    image: default
   steps:
   - run:
       <<: *setup_linux_system_environment
@@ -1066,7 +1060,7 @@ binary_mac_upload: &binary_mac_upload
 ##############################################################################
 smoke_linux_test: &smoke_linux_test
   machine:
-    image: ubuntu-1604:201903-01
+    image: default
   steps:
   - run:
       <<: *setup_linux_system_environment
@@ -1358,7 +1352,7 @@ jobs:
       USE_CUDA_DOCKER_RUNTIME: "1"
     resource_class: gpu.medium
     machine:
-      image: ubuntu-1604:201903-01
+      image: default
     steps:
     - run:
         <<: *setup_linux_system_environment
@@ -1389,7 +1383,7 @@ jobs:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/pytorch/pytorch-linux-xenial-cuda8-cudnn7-py3:291"
     resource_class: large
     machine:
-      image: ubuntu-1604:201903-01
+      image: default
     steps:
     - run:
         <<: *setup_linux_system_environment
@@ -1703,7 +1697,7 @@ jobs:
 # update_s3_htmls job
   update_s3_htmls:
     machine:
-      image: ubuntu-1604:201903-01
+      image: default
     steps:
     - run:
         <<: *setup_linux_system_environment
